@@ -48,7 +48,6 @@ fn setup(
     let paddle_half_width = PADDLE_SIZE.x / 2.0;
     let cell_width = BRICK_SIZE.x + BRICK_GAP.x;
     let cell_height = BRICK_SIZE.y + BRICK_GAP.y;
-    let bricks_per_row = (window.width() / cell_width).floor() as u8;
 
     commands.insert_resource(PaddleBounds {
         left: left + paddle_half_width,
@@ -85,9 +84,13 @@ fn setup(
         Ball,
     ));
 
+    let bricks_per_row = (window.width() / cell_width).floor() as u8;
+    let total_grid_width = (bricks_per_row as f32) * cell_width;
+    let grid_left = -total_grid_width / 2.0;
+
     for row in 0..BRICK_ROWS {
         for column in 0..bricks_per_row {
-            let x = left + (cell_width / 2.0) + column as f32 * cell_width;
+            let x = grid_left + (cell_width / 2.0) + column as f32 * cell_width;
             let y = top - (cell_height / 2.0) - row as f32 * cell_height;
             commands.spawn((
                 Sprite {
