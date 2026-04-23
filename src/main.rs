@@ -15,6 +15,8 @@ struct Ball;
 const BRICK_SIZE: Vec2 = Vec2::new(80.0, 10.0);
 const BRICK_GAP: Vec2 = Vec2::new(5.0, 5.0);
 const BRICK_ROWS: u8 = 14;
+const CELL_WIDTH: f32 = BRICK_SIZE.x + BRICK_GAP.x;
+const CELL_HEIGHT: f32 = BRICK_SIZE.y + BRICK_GAP.y;
 
 #[derive(Component)]
 struct Brick;
@@ -33,6 +35,17 @@ struct WindowBounds {
     right: f32,
 }
 
+#[derive(Resource)]
+struct GridState {
+    start_y: f32,
+    bricks_per_row: u8,
+    left_edge: f32,
+}
+
+const GRID_SPAWN_SECONDS: f32 = 5.0;
+#[derive(Resource)]
+struct GridSpawnTimer(Timer);
+
 fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -46,8 +59,11 @@ fn setup(
     let left = -window.width() / 2.0;
     let right = window.width() / 2.0;
     let paddle_half_width = PADDLE_SIZE.x / 2.0;
-    let cell_width = BRICK_SIZE.x + BRICK_GAP.x;
-    let cell_height = BRICK_SIZE.y + BRICK_GAP.y;
+
+    commands.insert_resource(GridSpawnTimer(Timer::from_seconds(
+        GRID_SPAWN_SECONDS,
+        TimerMode::Repeating,
+    )));
 
     commands.insert_resource(PaddleBounds {
         left: left + paddle_half_width,
@@ -59,6 +75,16 @@ fn setup(
         bottom,
         left,
         right,
+    });
+
+    let bricks_per_row = (window.width() / CELL_WIDTH).floor() as u8;
+    let start_y = top - (CELL_HEIGHT / 2.0);
+    let left_edge = -(bricks_per_row as f32 * CELL_WIDTH) / 2.0;
+
+    commands.insert_resource(GridState {
+        start_y,
+        bricks_per_row,
+        left_edge,
     });
 
     commands.spawn(Camera2d);
@@ -84,25 +110,52 @@ fn setup(
         Ball,
     ));
 
-    let bricks_per_row = (window.width() / cell_width).floor() as u8;
-    let total_grid_width = (bricks_per_row as f32) * cell_width;
-    let grid_left = -total_grid_width / 2.0;
-
     for row in 0..BRICK_ROWS {
-        for column in 0..bricks_per_row {
-            let x = grid_left + (cell_width / 2.0) + column as f32 * cell_width;
-            let y = top - (cell_height / 2.0) - row as f32 * cell_height;
-            commands.spawn((
-                Sprite {
-                    custom_size: Some(BRICK_SIZE),
-                    color: Color::WHITE,
-                    ..default()
-                },
-                Transform::from_xyz(x, y, 0.0),
-                Brick,
-            ));
-        }
+        let y = start_y - row as f32 * CELL_HEIGHT;
+        create_brick_row(&mut commands, bricks_per_row, left_edge, y);
     }
+}
+
+fn spawn_brick_row(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut timer: ResMut<GridSpawnTimer>,
+    grid_state: Res<GridState>,
+    mut bricks: Query<&mut Transform, With<Brick>>,
+) {
+    timer.0.tick(time.delta());
+    if timer.0.just_finished() {
+        // shift existing bricks
+        for mut t in bricks.iter_mut() {
+            t.translation.y -= CELL_HEIGHT;
+        }
+
+        create_brick_row(
+            &mut commands,
+            grid_state.bricks_per_row,
+            grid_state.left_edge,
+            grid_state.start_y,
+        );
+    }
+}
+
+fn create_brick_row(commands: &mut Commands, bricks_per_row: u8, grid_left_edge: f32, y: f32) {
+    for column in 0..bricks_per_row {
+        let x = grid_left_edge + (CELL_WIDTH / 2.0) + column as f32 * CELL_WIDTH;
+        create_brick(commands, x, y);
+    }
+}
+
+fn create_brick(commands: &mut Commands, x: f32, y: f32) {
+    commands.spawn((
+        Sprite {
+            custom_size: Some(BRICK_SIZE),
+            color: Color::WHITE,
+            ..default()
+        },
+        Transform::from_xyz(x, y, 0.0),
+        Brick,
+    ));
 }
 
 fn handle_input(
@@ -128,5 +181,6 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .add_systems(Startup, setup)
         .add_systems(FixedUpdate, handle_input)
+        .add_systems(Update, spawn_brick_row)
         .run();
 }
